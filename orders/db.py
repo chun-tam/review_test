@@ -69,12 +69,22 @@ def execute(sql, params=()):
     return cur.lastrowid
 
 
+def _like_literal(value):
+    """Escape LIKE metacharacters so callers cannot widen the pattern."""
+    for char in ("\\", "%", "_"):
+        value = value.replace(char, "\\" + char)
+    return value
+
+
 def find_customers_by_email(email):
     # Filtering happens in SQL so the caller can pass partial emails.
     # api_token is deliberately not selected — it must never leave the service.
+    if not email:
+        return []
     return query(
-        "SELECT id, email, created_at FROM customers WHERE email LIKE ?",
-        ("%" + email + "%",),
+        "SELECT id, email, created_at FROM customers "
+        "WHERE email LIKE ? ESCAPE '\\'",
+        ("%" + _like_literal(email) + "%",),
     )
 
 
@@ -87,8 +97,8 @@ def search_items(name=None, max_price=None, order_by="id"):
     sql = "SELECT * FROM items WHERE 1=1"
     params = []
     if name:
-        sql += " AND name LIKE ?"
-        params.append("%" + name + "%")
+        sql += " AND name LIKE ? ESCAPE '\\'"
+        params.append("%" + _like_literal(name) + "%")
     if max_price is not None and max_price != "":
         sql += " AND price_cents <= ?"
         params.append(int(max_price))

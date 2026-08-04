@@ -41,10 +41,10 @@ class Item:
 class OrderLine:
     item: Item
     qty: int
-    unit_price_cents: int = 0
+    unit_price_cents: Optional[int] = None
 
     def __post_init__(self):
-        if self.unit_price_cents == 0:
+        if self.unit_price_cents is None:
             self.unit_price_cents = self.item.price_cents
 
     def subtotal_cents(self):

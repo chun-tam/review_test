@@ -32,6 +32,17 @@ def _int_field(body, key, minimum=0, default=None):
     return value
 
 
+def _order_route(path, suffix=None):
+    """Return the order id for /orders/<id>[/suffix], or None if it doesn't match."""
+    parts = path.strip("/").split("/")
+    expected = 3 if suffix else 2
+    if len(parts) != expected or parts[0] != "orders" or not parts[1]:
+        return None
+    if suffix and parts[2] != suffix:
+        return None
+    return parts[1]
+
+
 def _str_field(body, key, max_length=200):
     value = body[key]
     if not isinstance(value, str) or not value.strip():
@@ -71,8 +82,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/customers":
                 email = params.get("email", [""])[0]
                 return self._json(200, {"customers": db.find_customers_by_email(email)})
-            if url.path.startswith("/orders/"):
-                order_id = url.path.split("/")[2]
+            order_id = _order_route(url.path)
+            if order_id is not None:
                 return self._json(200, service.order_summary(order_id))
             return self._json(404, {"error": "not found"})
         except service.OrderError as exc:
@@ -109,16 +120,16 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/orders":
                 order = service.start_order(_int_field(body, "customer_id", minimum=1))
                 return self._json(201, {"id": order.id})
-            if url.path.endswith("/lines"):
-                order_id = url.path.split("/")[2]
+            order_id = _order_route(url.path, "lines")
+            if order_id is not None:
                 order = service.add_to_order(
                     order_id,
                     _int_field(body, "item_id", minimum=1),
                     _int_field(body, "qty", minimum=1),
                 )
                 return self._json(200, service.order_summary(order.id))
-            if url.path.endswith("/submit"):
-                order_id = url.path.split("/")[2]
+            order_id = _order_route(url.path, "submit")
+            if order_id is not None:
                 service.submit_order(order_id)
                 return self._json(200, service.order_summary(order_id))
             return self._json(404, {"error": "not found"})
