@@ -3,6 +3,16 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+
+def _same_item(a, b):
+    """Identity by database id, falling back to sku for unsaved items."""
+    if a.id is not None and b.id is not None:
+        return a.id == b.id
+    if a.id is None and b.id is None:
+        return a.sku == b.sku
+    return False
+
+
 TAX_RATE = 0.0825
 FREE_SHIPPING_THRESHOLD_CENTS = 5000
 SHIPPING_FLAT_CENTS = 799
@@ -51,7 +61,7 @@ class Order:
 
     def add_line(self, item, qty):
         for line in self.lines:
-            if line.item.id == item.id:
+            if _same_item(line.item, item):
                 line.qty += qty
                 return line
         line = OrderLine(item=item, qty=qty)

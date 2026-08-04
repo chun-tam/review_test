@@ -100,6 +100,10 @@ class InsufficientStock(Exception):
     pass
 
 
+class ItemNotFound(Exception):
+    pass
+
+
 def decrement_stock(item_id, qty):
     """Atomically move stock by -qty, refusing to go negative."""
     conn = connect()
@@ -111,7 +115,7 @@ def decrement_stock(item_id, qty):
         conn.commit()
         if cur.rowcount == 0:
             if query_one("SELECT id FROM items WHERE id = ?", (item_id,)) is None:
-                raise KeyError(item_id)
+                raise ItemNotFound(item_id)
             raise InsufficientStock(item_id)
         row = query_one("SELECT stock FROM items WHERE id = ?", (item_id,))
     return row["stock"]

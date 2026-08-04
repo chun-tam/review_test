@@ -23,6 +23,24 @@ def _authorized(headers):
     return hmac.compare_digest(token, admin_token)
 
 
+def _int_field(body, key, minimum=0, default=None):
+    value = body.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("%s must be an integer" % key)
+    if value < minimum:
+        raise ValueError("%s must be >= %s" % (key, minimum))
+    return value
+
+
+def _str_field(body, key, max_length=200):
+    value = body[key]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("%s must be a non-empty string" % key)
+    if len(value) > max_length:
+        raise ValueError("%s is too long" % key)
+    return value
+
+
 class Handler(BaseHTTPRequestHandler):
     def _json(self, code, payload):
         body = json.dumps(payload).encode()
@@ -73,21 +91,31 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "invalid body: %s" % exc})
         try:
             if url.path == "/customers":
-                cid, _ = service.create_customer(body["email"])
+                email = _str_field(body, "email")
+                if "@" not in email:
+                    raise ValueError("email must contain @")
+                cid, _ = service.create_customer(email)
                 return self._json(201, {"id": cid})
             if url.path == "/items":
                 if not _authorized(self.headers):
                     return self._json(403, {"error": "forbidden"})
                 item_id = service.create_item(
-                    body["sku"], body["name"], body["price_cents"], body.get("stock", 0)
+                    _str_field(body, "sku"),
+                    _str_field(body, "name"),
+                    _int_field(body, "price_cents"),
+                    _int_field(body, "stock", default=0),
                 )
                 return self._json(201, {"id": item_id})
             if url.path == "/orders":
-                order = service.start_order(body["customer_id"])
+                order = service.start_order(_int_field(body, "customer_id", minimum=1))
                 return self._json(201, {"id": order.id})
             if url.path.endswith("/lines"):
                 order_id = url.path.split("/")[2]
-                order = service.add_to_order(order_id, body["item_id"], body["qty"])
+                order = service.add_to_order(
+                    order_id,
+                    _int_field(body, "item_id", minimum=1),
+                    _int_field(body, "qty", minimum=1),
+                )
                 return self._json(200, service.order_summary(order.id))
             if url.path.endswith("/submit"):
                 order_id = url.path.split("/")[2]
@@ -96,10 +124,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         except db.InsufficientStock as exc:
             return self._json(409, {"error": "insufficient stock for item %s" % exc})
+        except db.ItemNotFound as exc:
+            return self._json(404, {"error": "no such item: %s" % exc})
         except service.OrderError as exc:
             return self._json(409, {"error": str(exc)})
         except KeyError as exc:
             return self._json(400, {"error": "missing field %s" % exc})
+        except ValueError as exc:
+            return self._json(400, {"error": str(exc)})
         except Exception:
             log.exception("POST %s failed", self.path)
             return self._json(500, {"error": "internal error"})

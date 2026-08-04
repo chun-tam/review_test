@@ -17,7 +17,7 @@ class OrderError(Exception):
 
 def create_customer(email):
     """Create a customer and return (id, freshly generated api token)."""
-    log.info("creating customer %s", email)
+    log.info("creating customer")
     api_token = secrets.token_urlsafe(32)
     customer_id = db.execute(
         "INSERT INTO customers (email, api_token) VALUES (?, ?)", (email, api_token)
