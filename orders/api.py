@@ -12,6 +12,7 @@ Routes:
     POST /orders/<id>/submit       submit an order
 """
 
+import hmac
 import json
 import os
 import re
@@ -56,8 +57,8 @@ class OrdersRequestHandler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length) or b"{}")
 
     def _is_admin(self) -> bool:
-        return bool(self.admin_token) and (
-            self.headers.get("X-Admin-Token") == self.admin_token
+        return bool(self.admin_token) and hmac.compare_digest(
+            self.headers.get("X-Admin-Token") or "", self.admin_token
         )
 
     # -- routing -----------------------------------------------------------
@@ -95,6 +96,8 @@ class OrdersRequestHandler(BaseHTTPRequestHandler):
                 return self._send(200, self.service.order_summary(int(match.group(1))))
 
             return self._send(404, {"error": "not found"})
+        except (KeyError, ValueError) as exc:
+            return self._send(400, {"error": f"bad request: {exc}"})
         except ServiceError as exc:
             return self._send(400, {"error": str(exc)})
 

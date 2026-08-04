@@ -85,6 +85,8 @@ class OrderService:
         return self.get_order(order_id)
 
     def apply_discount(self, order_id: int, discount_percent: float) -> Order:
+        if not 0 <= discount_percent <= 100:
+            raise ServiceError("discount_percent must be between 0 and 100")
         order = self.get_order(order_id)
         if order.status is not OrderStatus.DRAFT:
             raise ServiceError("can only discount a draft order")
