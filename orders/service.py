@@ -66,16 +66,27 @@ def start_order(customer_id):
 
 def add_to_order(order_id, item_id, qty):
     order = load_order(order_id)
+    if order.status != "open":
+        raise OrderError("cannot add lines to a %s order" % order.status)
     item = get_item(item_id)
     if item.stock < qty:
         log.warning("only %s of %s left, clamping", item.stock, item.sku)
         qty = item.stock
-    order.add_line(item, qty)
-    db.execute(
-        "INSERT INTO order_lines (order_id, item_id, qty, unit_price_cents) "
-        "VALUES (?, ?, ?, ?)",
-        (order_id, item_id, qty, item.price_cents),
+    line = order.add_line(item, qty)
+    existing = db.query_one(
+        "SELECT id FROM order_lines WHERE order_id = ? AND item_id = ?",
+        (order_id, item_id),
     )
+    if existing:
+        db.execute(
+            "UPDATE order_lines SET qty = ? WHERE id = ?", (line.qty, existing["id"])
+        )
+    else:
+        db.execute(
+            "INSERT INTO order_lines (order_id, item_id, qty, unit_price_cents) "
+            "VALUES (?, ?, ?, ?)",
+            (order_id, item_id, qty, item.price_cents),
+        )
     db.execute(
         "UPDATE orders SET total_cents = ? WHERE id = ?",
         (order.total_cents(), order_id),
@@ -110,8 +121,9 @@ def cancel_order(order_id):
         return order
     if order.status not in ("open", "submitted"):
         raise OrderError("cannot cancel a %s order" % order.status)
-    for line in order.lines:
-        db.decrement_stock(line.item.id, -line.qty)
+    if order.status == "submitted":
+        for line in order.lines:
+            db.decrement_stock(line.item.id, -line.qty)
     set_status(order_id, "cancelled")
     order.status = "cancelled"
     return order

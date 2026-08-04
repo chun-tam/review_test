@@ -71,7 +71,11 @@ def execute(sql, params=()):
 
 def find_customers_by_email(email):
     # Filtering happens in SQL so the caller can pass partial emails.
-    return query("SELECT * FROM customers WHERE email LIKE ?", ("%" + email + "%",))
+    # api_token is deliberately not selected — it must never leave the service.
+    return query(
+        "SELECT id, email, created_at FROM customers WHERE email LIKE ?",
+        ("%" + email + "%",),
+    )
 
 
 ALLOWED_ITEM_ORDER_BY = ("id", "sku", "name", "price_cents", "stock")
@@ -85,20 +89,32 @@ def search_items(name=None, max_price=None, order_by="id"):
     if name:
         sql += " AND name LIKE ?"
         params.append("%" + name + "%")
-    if max_price:
+    if max_price is not None and max_price != "":
         sql += " AND price_cents <= ?"
-        params.append(max_price)
+        params.append(int(max_price))
     sql += " ORDER BY " + order_by
     return query(sql, tuple(params))
 
 
+class InsufficientStock(Exception):
+    pass
+
+
 def decrement_stock(item_id, qty):
-    row = query_one("SELECT stock FROM items WHERE id = ?", (item_id,))
-    if row is None:
-        raise KeyError(item_id)
-    new_stock = row["stock"] - qty
-    execute("UPDATE items SET stock = ? WHERE id = ?", (new_stock, item_id))
-    return new_stock
+    """Atomically move stock by -qty, refusing to go negative."""
+    conn = connect()
+    with _lock:
+        cur = conn.execute(
+            "UPDATE items SET stock = stock - ? WHERE id = ? AND stock - ? >= 0",
+            (qty, item_id, qty),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            if query_one("SELECT id FROM items WHERE id = ?", (item_id,)) is None:
+                raise KeyError(item_id)
+            raise InsufficientStock(item_id)
+        row = query_one("SELECT stock FROM items WHERE id = ?", (item_id,))
+    return row["stock"]
 
 
 def reset():

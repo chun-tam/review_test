@@ -55,6 +55,8 @@ class Handler(BaseHTTPRequestHandler):
                 order_id = url.path.split("/")[2]
                 return self._json(200, service.order_summary(order_id))
             return self._json(404, {"error": "not found"})
+        except ValueError as exc:
+            return self._json(400, {"error": str(exc)})
         except Exception:
             log.exception("GET %s failed", self.path)
             return self._json(500, {"error": "internal error"})
