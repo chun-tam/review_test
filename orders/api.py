@@ -11,6 +11,8 @@ from orders import db, service
 
 log = logging.getLogger(__name__)
 
+MAX_BODY_BYTES = 64 * 1024
+
 
 def _authorized(headers):
     admin_token = os.environ.get("ORDERS_ADMIN_TOKEN")
@@ -20,7 +22,10 @@ def _authorized(headers):
         return False
     if token is None:
         return False
-    return hmac.compare_digest(token, admin_token)
+    return hmac.compare_digest(
+        token.encode("utf-8", "surrogateescape"),
+        admin_token.encode("utf-8", "surrogateescape"),
+    )
 
 
 def _int_field(body, key, minimum=0, default=None):
@@ -53,6 +58,8 @@ def _str_field(body, key, max_length=200):
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 15
+
     def _json(self, code, payload):
         body = json.dumps(payload).encode()
         self.send_response(code)
@@ -63,6 +70,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self):
         length = int(self.headers.get("Content-Length", 0))
+        if length > MAX_BODY_BYTES:
+            raise ValueError("body larger than %s bytes" % MAX_BODY_BYTES)
         raw = self.rfile.read(length)
         if not raw:
             return {}

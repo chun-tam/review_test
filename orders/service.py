@@ -166,6 +166,7 @@ def order_summary(order_id):
             for l in order.lines
         ],
         "subtotal_cents": order.subtotal_cents(),
+        "discount_cents": order.discount_cents(),
         "tax_cents": order.tax_cents(),
         "shipping_cents": order.shipping_cents(),
         "total_cents": order.total_cents(),
