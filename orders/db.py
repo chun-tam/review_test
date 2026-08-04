@@ -112,7 +112,7 @@ def search_items(name=None, max_price=None, order_by="id", limit=MAX_ITEM_RESULT
     limit = min(int(limit), MAX_ITEM_RESULTS)
     if limit < 1:
         raise ValueError("limit must be positive")
-    sql = "SELECT * FROM items WHERE 1=1"
+    sql = "SELECT id, sku, name, price_cents, stock FROM items WHERE 1=1"
     params = []
     if name:
         sql += " AND name LIKE ? ESCAPE '\\'"

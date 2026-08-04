@@ -89,9 +89,5 @@ class Order:
         return int(self.subtotal_cents() * TAX_RATE)
 
     def total_cents(self):
-        return (
-            self.subtotal_cents()
-            - self.discount_cents()
-            + self.tax_cents()
-            + self.shipping_cents()
-        )
+        discounted = max(0, self.subtotal_cents() - self.discount_cents())
+        return discounted + self.tax_cents() + self.shipping_cents()
