@@ -129,7 +129,15 @@ def submit_order(order_id):
             done.append(line)
     except Exception:
         for line in done:
-            db.decrement_stock(line.item.id, -line.qty)
+            try:
+                db.decrement_stock(line.item.id, -line.qty)
+            except Exception:
+                log.exception(
+                    "failed to restock item %s (qty %s) for order %s",
+                    line.item.id,
+                    line.qty,
+                    order_id,
+                )
         raise
     set_status(order_id, "submitted")
     order.status = "submitted"
