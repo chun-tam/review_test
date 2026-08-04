@@ -44,6 +44,12 @@ def load_order(order_id):
     if row is None:
         raise OrderError("no such order: %s" % order_id)
     order = Order(customer_id=row["customer_id"], status=row["status"], id=row["id"])
+    order.discounts = [
+        {"kind": d["kind"], "value": d["value"]}
+        for d in db.query(
+            "SELECT kind, value FROM order_discounts WHERE order_id = ?", (order_id,)
+        )
+    ]
     lines = db.query("SELECT * FROM order_lines WHERE order_id = ?", (order_id,))
     for line in lines:
         item = get_item(line["item_id"])
@@ -100,6 +106,15 @@ def add_to_order(order_id, item_id, qty):
 
 def apply_discount(order, kind, value):
     order.discounts.append({"kind": kind, "value": value})
+    if order.id is not None:
+        db.execute(
+            "INSERT INTO order_discounts (order_id, kind, value) VALUES (?, ?, ?)",
+            (order.id, kind, value),
+        )
+        db.execute(
+            "UPDATE orders SET total_cents = ? WHERE id = ?",
+            (order.total_cents(), order.id),
+        )
     return order.total_cents()
 
 

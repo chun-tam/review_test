@@ -27,6 +27,12 @@ CREATE TABLE IF NOT EXISTS orders (
     total_cents INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS order_discounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    value INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS order_lines (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER NOT NULL,
@@ -76,15 +82,21 @@ def _like_literal(value):
     return value
 
 
+MIN_EMAIL_SEARCH_LENGTH = 3
+MAX_CUSTOMER_RESULTS = 50
+
+
 def find_customers_by_email(email):
     # Filtering happens in SQL so the caller can pass partial emails.
     # api_token is deliberately not selected — it must never leave the service.
-    if not email:
-        return []
+    if len(email.strip()) < MIN_EMAIL_SEARCH_LENGTH:
+        raise ValueError(
+            "email must be at least %s characters" % MIN_EMAIL_SEARCH_LENGTH
+        )
     return query(
         "SELECT id, email, created_at FROM customers "
-        "WHERE email LIKE ? ESCAPE '\\'",
-        ("%" + _like_literal(email) + "%",),
+        "WHERE email LIKE ? ESCAPE '\\' ORDER BY id LIMIT ?",
+        ("%" + _like_literal(email) + "%", MAX_CUSTOMER_RESULTS),
     )
 
 
@@ -142,6 +154,6 @@ def reset():
     """Drop everything. Used by the tests."""
     global _conn
     conn = connect()
-    for table in ("order_lines", "orders", "items", "customers"):
+    for table in ("order_discounts", "order_lines", "orders", "items", "customers"):
         conn.execute("DELETE FROM " + table)
     conn.commit()

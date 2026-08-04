@@ -49,7 +49,7 @@ def export_csv(path=None):
     for row in rows:
         writer.writerow([row["sku"], row["name"], row["units"], row["revenue"]])
     if path:
-        with open(path, "w") as f:
+        with open(path, "w", newline="") as f:
             f.write(buf.getvalue())
     return buf.getvalue()
 
