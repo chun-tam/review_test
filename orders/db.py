@@ -91,9 +91,15 @@ def find_customers_by_email(email):
 ALLOWED_ITEM_ORDER_BY = ("id", "sku", "name", "price_cents", "stock")
 
 
-def search_items(name=None, max_price=None, order_by="id"):
+MAX_ITEM_RESULTS = 200
+
+
+def search_items(name=None, max_price=None, order_by="id", limit=MAX_ITEM_RESULTS):
     if order_by not in ALLOWED_ITEM_ORDER_BY:
         raise ValueError("unsupported order_by: %s" % order_by)
+    limit = min(int(limit), MAX_ITEM_RESULTS)
+    if limit < 1:
+        raise ValueError("limit must be positive")
     sql = "SELECT * FROM items WHERE 1=1"
     params = []
     if name:
@@ -102,7 +108,8 @@ def search_items(name=None, max_price=None, order_by="id"):
     if max_price is not None and max_price != "":
         sql += " AND price_cents <= ?"
         params.append(int(max_price))
-    sql += " ORDER BY " + order_by
+    sql += " ORDER BY " + order_by + " LIMIT ?"
+    params.append(limit)
     return query(sql, tuple(params))
 
 

@@ -77,6 +77,7 @@ class Handler(BaseHTTPRequestHandler):
                     name=params.get("name", [None])[0],
                     max_price=params.get("max_price", [None])[0],
                     order_by=params.get("order_by", ["id"])[0],
+                    limit=params.get("limit", [db.MAX_ITEM_RESULTS])[0],
                 )
                 return self._json(200, {"items": items})
             if url.path == "/customers":
@@ -101,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError) as exc:
             return self._json(400, {"error": "invalid body: %s" % exc})
         try:
+            if not isinstance(body, dict):
+                raise ValueError("body must be a JSON object")
             if url.path == "/customers":
                 email = _str_field(body, "email")
                 if "@" not in email:
