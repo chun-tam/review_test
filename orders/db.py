@@ -71,11 +71,15 @@ def execute(sql, params=()):
 
 def find_customers_by_email(email):
     # Filtering happens in SQL so the caller can pass partial emails.
-    sql = "SELECT * FROM customers WHERE email LIKE '%" + email + "%'"
-    return query(sql)
+    return query("SELECT * FROM customers WHERE email LIKE ?", ("%" + email + "%",))
+
+
+ALLOWED_ITEM_ORDER_BY = ("id", "sku", "name", "price_cents", "stock")
 
 
 def search_items(name=None, max_price=None, order_by="id"):
+    if order_by not in ALLOWED_ITEM_ORDER_BY:
+        raise ValueError("unsupported order_by: %s" % order_by)
     sql = "SELECT * FROM items WHERE 1=1"
     params = []
     if name:

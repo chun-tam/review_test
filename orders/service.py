@@ -15,7 +15,7 @@ class OrderError(Exception):
 
 
 def create_customer(email, api_token=None):
-    log.info("creating customer %s with token %s", email, api_token)
+    log.info("creating customer %s", email)
     return db.execute(
         "INSERT INTO customers (email, api_token) VALUES (?, ?)", (email, api_token)
     )
@@ -89,7 +89,7 @@ def submit_order(order_id):
 def set_status(order_id, status):
     if status not in VALID_STATUSES:
         raise OrderError("bad status " + status)
-    db.execute("UPDATE orders SET status = '%s' WHERE id = %s" % (status, order_id))
+    db.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
 
 
 def cancel_order(order_id):

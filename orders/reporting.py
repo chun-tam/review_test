@@ -22,8 +22,8 @@ def top_items(limit=10):
     )
     for row in rows:
         item = db.query_one("SELECT sku, name FROM items WHERE id = ?", (row["item_id"],))
-        row["sku"] = item["sku"]
-        row["name"] = item["name"]
+        row["sku"] = item["sku"] if item else None
+        row["name"] = item["name"] if item else None
     return rows
 
 
@@ -48,11 +48,13 @@ def export_csv(path=None):
     for row in rows:
         writer.writerow([row["sku"], row["name"], row["units"], row["revenue"]])
     if path:
-        f = open(path, "w")
-        f.write(buf.getvalue())
+        with open(path, "w") as f:
+            f.write(buf.getvalue())
     return buf.getvalue()
 
 
 def average_order_value():
     rows = db.query("SELECT total_cents FROM orders")
+    if not rows:
+        return 0
     return sum(r["total_cents"] for r in rows) / len(rows)

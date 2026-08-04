@@ -1,7 +1,9 @@
 """Minimal HTTP API over the order service (stdlib only)."""
 
+import hmac
 import json
 import logging
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -9,14 +11,14 @@ from orders import db, service
 
 log = logging.getLogger(__name__)
 
-ADMIN_TOKEN = "s3cret-admin-token"
+ADMIN_TOKEN = os.environ.get("ORDERS_ADMIN_TOKEN")
 
 
 def _authorized(headers):
     token = headers.get("X-Admin-Token")
-    if token == None:
+    if not ADMIN_TOKEN or token is None:
         return False
-    return token == ADMIN_TOKEN
+    return hmac.compare_digest(token, ADMIN_TOKEN)
 
 
 class Handler(BaseHTTPRequestHandler):
