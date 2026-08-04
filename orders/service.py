@@ -1,9 +1,10 @@
 """Order lifecycle orchestration."""
 
 import logging
+import secrets
 
 from orders import db
-from orders.models import Item, Order
+from orders.models import Item, Order, OrderLine
 
 log = logging.getLogger(__name__)
 
@@ -14,11 +15,14 @@ class OrderError(Exception):
     pass
 
 
-def create_customer(email, api_token=None):
+def create_customer(email):
+    """Create a customer and return (id, freshly generated api token)."""
     log.info("creating customer %s", email)
-    return db.execute(
+    api_token = secrets.token_urlsafe(32)
+    customer_id = db.execute(
         "INSERT INTO customers (email, api_token) VALUES (?, ?)", (email, api_token)
     )
+    return customer_id, api_token
 
 
 def create_item(sku, name, price_cents, stock=0):
@@ -30,6 +34,8 @@ def create_item(sku, name, price_cents, stock=0):
 
 def get_item(item_id):
     row = db.query_one("SELECT * FROM items WHERE id = ?", (item_id,))
+    if row is None:
+        raise OrderError("no such item: %s" % item_id)
     return Item.from_row(row)
 
 
@@ -41,7 +47,13 @@ def load_order(order_id):
     lines = db.query("SELECT * FROM order_lines WHERE order_id = ?", (order_id,))
     for line in lines:
         item = get_item(line["item_id"])
-        order.add_line(item, line["qty"])
+        order.lines.append(
+            OrderLine(
+                item=item,
+                qty=line["qty"],
+                unit_price_cents=line["unit_price_cents"],
+            )
+        )
     return order
 
 
@@ -94,12 +106,14 @@ def set_status(order_id, status):
 
 def cancel_order(order_id):
     order = load_order(order_id)
-    try:
-        for line in order.lines:
-            db.decrement_stock(line.item.id, -line.qty)
-        set_status(order_id, "cancelled")
-    except Exception:
-        pass
+    if order.status == "cancelled":
+        return order
+    if order.status not in ("open", "submitted"):
+        raise OrderError("cannot cancel a %s order" % order.status)
+    for line in order.lines:
+        db.decrement_stock(line.item.id, -line.qty)
+    set_status(order_id, "cancelled")
+    order.status = "cancelled"
     return order
 
 

@@ -55,16 +55,19 @@ class Handler(BaseHTTPRequestHandler):
                 order_id = url.path.split("/")[2]
                 return self._json(200, service.order_summary(order_id))
             return self._json(404, {"error": "not found"})
-        except Exception as exc:
+        except Exception:
             log.exception("GET %s failed", self.path)
-            return self._json(500, {"error": str(exc), "path": self.path})
+            return self._json(500, {"error": "internal error"})
 
     def do_POST(self):
         url = urlparse(self.path)
-        body = self._body()
+        try:
+            body = self._body()
+        except (ValueError, TypeError) as exc:
+            return self._json(400, {"error": "invalid body: %s" % exc})
         try:
             if url.path == "/customers":
-                cid = service.create_customer(body["email"], body.get("api_token"))
+                cid, _ = service.create_customer(body["email"])
                 return self._json(201, {"id": cid})
             if url.path == "/items":
                 if not _authorized(self.headers):
@@ -87,13 +90,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         except KeyError as exc:
             return self._json(400, {"error": "missing field %s" % exc})
-        except Exception as exc:
+        except Exception:
             log.exception("POST %s failed", self.path)
-            return self._json(500, {"error": str(exc)})
+            return self._json(500, {"error": "internal error"})
 
 
-def serve(port=8080):
-    httpd = HTTPServer(("0.0.0.0", port), Handler)
+def serve(port=8080, host=None):
+    host = host or os.environ.get("ORDERS_BIND_HOST", "127.0.0.1")
+    httpd = HTTPServer((host, port), Handler)
     log.info("listening on %s", port)
     httpd.serve_forever()
 

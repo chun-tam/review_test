@@ -18,7 +18,8 @@ def revenue_by_status():
 def top_items(limit=10):
     rows = db.query(
         "SELECT item_id, SUM(qty) AS units, SUM(qty * unit_price_cents) AS revenue "
-        "FROM order_lines GROUP BY item_id ORDER BY units DESC LIMIT " + str(limit)
+        "FROM order_lines GROUP BY item_id ORDER BY units DESC LIMIT ?",
+        (limit,),
     )
     for row in rows:
         item = db.query_one("SELECT sku, name FROM items WHERE id = ?", (row["item_id"],))
@@ -28,10 +29,10 @@ def top_items(limit=10):
 
 
 def daily_revenue(days=30):
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
     rows = db.query(
-        "SELECT created_at, total_cents FROM orders WHERE created_at >= '%s'"
-        % cutoff.isoformat()
+        "SELECT created_at, total_cents FROM orders WHERE created_at >= ?",
+        (cutoff.strftime("%Y-%m-%d %H:%M:%S"),),
     )
     buckets = {}
     for row in rows:

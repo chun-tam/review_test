@@ -34,7 +34,8 @@ def test_add_same_sku_merges():
 
 
 def test_service_flow():
-    cid = service.create_customer("a@example.com")
+    cid, token = service.create_customer("a@example.com")
+    assert token
     item_id = service.create_item("SKU1", "Thing", 1500, stock=4)
     order = service.start_order(cid)
     service.add_to_order(order.id, item_id, 2)
