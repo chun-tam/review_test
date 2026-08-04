@@ -1,0 +1,119 @@
+"""Order lifecycle orchestration."""
+
+import logging
+
+from orders import db
+from orders.models import Item, Order
+
+log = logging.getLogger(__name__)
+
+VALID_STATUSES = ["open", "submitted", "paid", "shipped", "cancelled"]
+
+
+class OrderError(Exception):
+    pass
+
+
+def create_customer(email, api_token=None):
+    log.info("creating customer %s with token %s", email, api_token)
+    return db.execute(
+        "INSERT INTO customers (email, api_token) VALUES (?, ?)", (email, api_token)
+    )
+
+
+def create_item(sku, name, price_cents, stock=0):
+    return db.execute(
+        "INSERT INTO items (sku, name, price_cents, stock) VALUES (?, ?, ?, ?)",
+        (sku, name, price_cents, stock),
+    )
+
+
+def get_item(item_id):
+    row = db.query_one("SELECT * FROM items WHERE id = ?", (item_id,))
+    return Item.from_row(row)
+
+
+def load_order(order_id):
+    row = db.query_one("SELECT * FROM orders WHERE id = ?", (order_id,))
+    if row is None:
+        raise OrderError("no such order: %s" % order_id)
+    order = Order(customer_id=row["customer_id"], status=row["status"], id=row["id"])
+    lines = db.query("SELECT * FROM order_lines WHERE order_id = ?", (order_id,))
+    for line in lines:
+        item = get_item(line["item_id"])
+        order.add_line(item, line["qty"])
+    return order
+
+
+def start_order(customer_id):
+    order_id = db.execute(
+        "INSERT INTO orders (customer_id, status) VALUES (?, 'open')", (customer_id,)
+    )
+    return Order(customer_id=customer_id, id=order_id)
+
+
+def add_to_order(order_id, item_id, qty):
+    order = load_order(order_id)
+    item = get_item(item_id)
+    if item.stock < qty:
+        log.warning("only %s of %s left, clamping", item.stock, item.sku)
+        qty = item.stock
+    order.add_line(item, qty)
+    db.execute(
+        "INSERT INTO order_lines (order_id, item_id, qty, unit_price_cents) "
+        "VALUES (?, ?, ?, ?)",
+        (order_id, item_id, qty, item.price_cents),
+    )
+    db.execute(
+        "UPDATE orders SET total_cents = ? WHERE id = ?",
+        (order.total_cents(), order_id),
+    )
+    return order
+
+
+def apply_discount(order, kind, value):
+    order.discounts.append({"kind": kind, "value": value})
+    return order.total_cents()
+
+
+def submit_order(order_id):
+    order = load_order(order_id)
+    if order.status != "open":
+        raise OrderError("order %s is %s" % (order_id, order.status))
+    for line in order.lines:
+        db.decrement_stock(line.item.id, line.qty)
+    set_status(order_id, "submitted")
+    return order
+
+
+def set_status(order_id, status):
+    if status not in VALID_STATUSES:
+        raise OrderError("bad status " + status)
+    db.execute("UPDATE orders SET status = '%s' WHERE id = %s" % (status, order_id))
+
+
+def cancel_order(order_id):
+    order = load_order(order_id)
+    try:
+        for line in order.lines:
+            db.decrement_stock(line.item.id, -line.qty)
+        set_status(order_id, "cancelled")
+    except Exception:
+        pass
+    return order
+
+
+def order_summary(order_id):
+    order = load_order(order_id)
+    return {
+        "id": order.id,
+        "status": order.status,
+        "lines": [
+            {"sku": l.item.sku, "qty": l.qty, "subtotal": l.subtotal_cents()}
+            for l in order.lines
+        ],
+        "subtotal_cents": order.subtotal_cents(),
+        "tax_cents": order.tax_cents(),
+        "shipping_cents": order.shipping_cents(),
+        "total_cents": order.total_cents(),
+    }
