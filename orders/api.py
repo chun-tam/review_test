@@ -11,14 +11,16 @@ from orders import db, service
 
 log = logging.getLogger(__name__)
 
-ADMIN_TOKEN = os.environ.get("ORDERS_ADMIN_TOKEN")
-
 
 def _authorized(headers):
+    admin_token = os.environ.get("ORDERS_ADMIN_TOKEN")
     token = headers.get("X-Admin-Token")
-    if not ADMIN_TOKEN or token is None:
+    if not admin_token:
+        log.error("ORDERS_ADMIN_TOKEN is unset; admin routes are disabled")
         return False
-    return hmac.compare_digest(token, ADMIN_TOKEN)
+    if token is None:
+        return False
+    return hmac.compare_digest(token, admin_token)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -55,6 +57,8 @@ class Handler(BaseHTTPRequestHandler):
                 order_id = url.path.split("/")[2]
                 return self._json(200, service.order_summary(order_id))
             return self._json(404, {"error": "not found"})
+        except service.OrderError as exc:
+            return self._json(404, {"error": str(exc)})
         except ValueError as exc:
             return self._json(400, {"error": str(exc)})
         except Exception:
@@ -90,6 +94,10 @@ class Handler(BaseHTTPRequestHandler):
                 service.submit_order(order_id)
                 return self._json(200, service.order_summary(order_id))
             return self._json(404, {"error": "not found"})
+        except db.InsufficientStock as exc:
+            return self._json(409, {"error": "insufficient stock for item %s" % exc})
+        except service.OrderError as exc:
+            return self._json(409, {"error": str(exc)})
         except KeyError as exc:
             return self._json(400, {"error": "missing field %s" % exc})
         except Exception:
@@ -98,6 +106,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(port=8080, host=None):
+    if not os.environ.get("ORDERS_ADMIN_TOKEN"):
+        log.warning("ORDERS_ADMIN_TOKEN is unset; item creation will be rejected")
     host = host or os.environ.get("ORDERS_BIND_HOST", "127.0.0.1")
     httpd = HTTPServer((host, port), Handler)
     log.info("listening on %s", port)

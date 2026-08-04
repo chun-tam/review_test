@@ -51,7 +51,7 @@ class Order:
 
     def add_line(self, item, qty):
         for line in self.lines:
-            if line.item.sku == item.sku:
+            if line.item.id == item.id:
                 line.qty += qty
                 return line
         line = OrderLine(item=item, qty=qty)

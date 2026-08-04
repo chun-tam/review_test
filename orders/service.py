@@ -69,9 +69,13 @@ def add_to_order(order_id, item_id, qty):
     if order.status != "open":
         raise OrderError("cannot add lines to a %s order" % order.status)
     item = get_item(item_id)
-    if item.stock < qty:
-        log.warning("only %s of %s left, clamping", item.stock, item.sku)
-        qty = item.stock
+    already = sum(l.qty for l in order.lines if l.item.id == item.id)
+    if qty < 1:
+        raise OrderError("qty must be positive")
+    if item.stock < already + qty:
+        raise OrderError(
+            "only %s of %s available" % (item.stock - already, item.sku)
+        )
     line = order.add_line(item, qty)
     existing = db.query_one(
         "SELECT id FROM order_lines WHERE order_id = ? AND item_id = ?",
@@ -103,9 +107,17 @@ def submit_order(order_id):
     order = load_order(order_id)
     if order.status != "open":
         raise OrderError("order %s is %s" % (order_id, order.status))
-    for line in order.lines:
-        db.decrement_stock(line.item.id, line.qty)
+    done = []
+    try:
+        for line in order.lines:
+            db.decrement_stock(line.item.id, line.qty)
+            done.append(line)
+    except Exception:
+        for line in done:
+            db.decrement_stock(line.item.id, -line.qty)
+        raise
     set_status(order_id, "submitted")
+    order.status = "submitted"
     return order
 
 
