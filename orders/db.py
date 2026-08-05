@@ -155,6 +155,11 @@ class Database:
         )
         self.conn.commit()
         order.id = cur.lastrowid
+        row = self.conn.execute(
+            "SELECT created_at FROM orders WHERE id = ?", (order.id,)
+        ).fetchone()
+        if row is not None:
+            order.created_at = row["created_at"]
         return order
 
     def update_order(self, order: Order) -> None:
