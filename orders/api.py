@@ -16,6 +16,8 @@ import hmac
 import json
 import os
 import re
+import sqlite3
+import traceback
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
@@ -61,6 +63,17 @@ class OrdersRequestHandler(BaseHTTPRequestHandler):
             self.headers.get("X-Admin-Token") or "", self.admin_token
         )
 
+    def _send_error(self, exc: BaseException) -> None:
+        """Map an exception to a JSON response so every request gets a reply."""
+        if isinstance(exc, sqlite3.IntegrityError):
+            return self._send(409, {"error": f"conflict: {exc}"})
+        if isinstance(exc, ServiceError):
+            return self._send(400, {"error": str(exc)})
+        if isinstance(exc, (KeyError, TypeError, ValueError)):
+            return self._send(400, {"error": f"bad request: {exc}"})
+        traceback.print_exc()
+        return self._send(500, {"error": "internal error"})
+
     # -- routing -----------------------------------------------------------
 
     def do_GET(self):
@@ -96,10 +109,8 @@ class OrdersRequestHandler(BaseHTTPRequestHandler):
                 return self._send(200, self.service.order_summary(int(match.group(1))))
 
             return self._send(404, {"error": "not found"})
-        except (KeyError, ValueError) as exc:
-            return self._send(400, {"error": f"bad request: {exc}"})
-        except ServiceError as exc:
-            return self._send(400, {"error": str(exc)})
+        except Exception as exc:
+            return self._send_error(exc)
 
     def do_POST(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
@@ -142,10 +153,8 @@ class OrdersRequestHandler(BaseHTTPRequestHandler):
                 return self._send(200, order.to_dict())
 
             return self._send(404, {"error": "not found"})
-        except (KeyError, ValueError) as exc:
-            return self._send(400, {"error": f"bad request: {exc}"})
-        except ServiceError as exc:
-            return self._send(400, {"error": str(exc)})
+        except Exception as exc:
+            return self._send_error(exc)
 
 
 def _first(query: dict, key: str) -> Optional[str]:
